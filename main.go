@@ -7,6 +7,7 @@ import (
 	"net/http/cookiejar"
 
 	"github.com/PuerkitoBio/goquery"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 // This page is the entry link to search for home-regestration
@@ -21,7 +22,7 @@ func main() {
 	httpClient := &http.Client{Jar: jar}
 
 	// make first request to get session-cookies
-	req := createRequest(entryURL)
+	req := createGetRequest(entryURL)
 	res, err := httpClient.Do(req)
 	if err != nil {
 		log.Fatal(err)
@@ -32,7 +33,7 @@ func main() {
 	}
 
 	// make second request to get HTML page with appointments
-	req = createRequest(appointmentURL)
+	req = createGetRequest(appointmentURL)
 	res, err = httpClient.Do(req)
 	if err != nil {
 		log.Fatal(err)
@@ -57,11 +58,19 @@ func main() {
 	// TODO parse dates out of links for more details
 	if len(bookableDataPoints.Nodes) > 0 {
 		fmt.Print("Success! ")
+		req := createTelegramSendMessageRequest("Hey, I've got some free appointments. Go get em'! https://service.berlin.de/terminvereinbarung/termin/all/120686/")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if resp.StatusCode != 200 {
+			log.Fatalf("status code error: %d %s", resp.StatusCode, resp.Status)
+		}
 	}
 	fmt.Printf("Found %v days with open slots\n", len(bookableDataPoints.Nodes))
 }
 
-func createRequest(url string) *http.Request {
+func createGetRequest(url string) *http.Request {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Fatalln(err)
