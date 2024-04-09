@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	_ "github.com/joho/godotenv/autoload"
@@ -18,6 +20,13 @@ var entryURL = "https://service.berlin.de/terminvereinbarung/termin/all/120686/"
 var appointmentURL = "https://service.berlin.de/terminvereinbarung/termin/day/1714428000/"
 
 func main() {
+	for {
+		poll()
+		time.Sleep(time.Duration(60+rand.Intn(60)) * time.Second)
+	}
+}
+
+func poll() {
 	jar, _ := cookiejar.New(nil)
 	httpClient := &http.Client{Jar: jar}
 
@@ -67,7 +76,7 @@ func main() {
 			log.Fatalf("status code error: %d %s", resp.StatusCode, resp.Status)
 		}
 	}
-	fmt.Printf("Found %v days with open slots\n", len(bookableDataPoints.Nodes))
+	fmt.Printf("Found %v days with open slots (%s)\n", len(bookableDataPoints.Nodes), time.Now().Format("02.01.2006 15:04:05"))
 }
 
 func createGetRequest(url string) *http.Request {
