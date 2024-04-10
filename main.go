@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
@@ -22,7 +21,7 @@ var appointmentURL = "https://service.berlin.de/terminvereinbarung/termin/day/17
 func main() {
 	for {
 		poll()
-		time.Sleep(time.Duration(60+rand.Intn(60)) * time.Second)
+		time.Sleep(time.Minute)
 	}
 }
 
@@ -30,42 +29,11 @@ func poll() {
 	jar, _ := cookiejar.New(nil)
 	httpClient := &http.Client{Jar: jar}
 
-	// make first request to get session-cookies
-	req := createGetRequest(entryURL)
-	res, err := httpClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
-	}
+	getCookies(httpClient)
 
-	// make second request to get HTML page with appointments
-	req = createGetRequest(appointmentURL)
-	res, err = httpClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
-	}
-
-	// parse HTML to get open appointments
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	errorMessage := doc.Find(".alert-error")
-	if len(errorMessage.Nodes) > 0 {
-		log.Fatal("ERROR: Bürgeramt session invalid")
-	}
-
-	bookableDataPoints := doc.Find("td.buchbar")
-	// TODO parse dates out of links for more details
-	if len(bookableDataPoints.Nodes) > 0 {
+	doc := getAppointmentPage(httpClient)
+	bookableAppointmentCount := getBookableAppointmentCount(doc)
+	if bookableAppointmentCount > 0 {
 		fmt.Print("Success! ")
 		req := createTelegramSendMessageRequest("Hey, I've got some free appointments. Go get em'! https://service.berlin.de/terminvereinbarung/termin/all/120686/")
 		resp, err := httpClient.Do(req)
@@ -76,7 +44,49 @@ func poll() {
 			log.Fatalf("status code error: %d %s", resp.StatusCode, resp.Status)
 		}
 	}
-	fmt.Printf("Found %v days with open slots (%s)\n", len(bookableDataPoints.Nodes), time.Now().Format("02.01.2006 15:04:05"))
+	fmt.Printf("Found %v days with open slots (%s)\n", bookableAppointmentCount, time.Now().Format("02.01.2006 15:04:05"))
+}
+
+func getCookies(httpClient *http.Client) {
+	req := createGetRequest(entryURL)
+	res, err := httpClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+}
+
+func getAppointmentPage(httpClient *http.Client) *goquery.Document {
+	req := createGetRequest(appointmentURL)
+	res, err := httpClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return doc
+}
+
+func getBookableAppointmentCount(doc *goquery.Document) int {
+	errorMessage := doc.Find(".alert-error")
+	if len(errorMessage.Nodes) > 0 {
+		log.Fatal("ERROR: Bürgeramt session invalid")
+	}
+
+	bookableDataPoints := doc.Find("td.buchbar")
+	return len(bookableDataPoints.Nodes)
+
 }
 
 func createGetRequest(url string) *http.Request {
